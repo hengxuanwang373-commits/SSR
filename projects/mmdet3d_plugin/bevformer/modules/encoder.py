@@ -88,17 +88,19 @@ class BEVFormerEncoder(TransformerLayerSequence):
             ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
             return ref_2d
 
-    # This function must use fp32!!!
+    # This function must use fp32!!! 保证几何坐标系变换的极高精度，避免除以零或溢出
     @force_fp32(apply_to=('reference_points', 'img_metas'))
     def point_sampling(self, reference_points, pc_range,  img_metas):
-
+        # lidar2img是相机内外参联合矩阵
         lidar2img = []
+        # img_meta 是相机元数据
         for img_meta in img_metas:
             lidar2img.append(img_meta['lidar2img'])
         lidar2img = np.asarray(lidar2img)
         lidar2img = reference_points.new_tensor(lidar2img)  # (B, N, 4, 4)
         reference_points = reference_points.clone()
-
+        # reference_points 初始状态下是被归一化到 0～1 的无量纲数值
+        # 而这里将其反归一化，还原到了真实事件的物理坐标，以 m 为量纲
         reference_points[..., 0:1] = reference_points[..., 0:1] * \
             (pc_range[3] - pc_range[0]) + pc_range[0]
         reference_points[..., 1:2] = reference_points[..., 1:2] * \
@@ -106,9 +108,11 @@ class BEVFormerEncoder(TransformerLayerSequence):
         reference_points[..., 2:3] = reference_points[..., 2:3] * \
             (pc_range[5] - pc_range[2]) + pc_range[2]
 
+        # 构建齐次坐标，使其变成（X，Y，Z，1）
         reference_points = torch.cat(
             (reference_points, torch.ones_like(reference_points[..., :1])), -1)
 
+        # 张量对齐
         reference_points = reference_points.permute(1, 0, 2, 3)
         D, B, num_query = reference_points.size()[:3]
         num_cam = lidar2img.size(1)
@@ -119,17 +123,22 @@ class BEVFormerEncoder(TransformerLayerSequence):
         lidar2img = lidar2img.view(
             1, B, num_cam, 1, 4, 4).repeat(D, 1, 1, num_query, 1, 1)
 
+        # 参考点在相机坐标系下的变换 3D->2D
         reference_points_cam = torch.matmul(lidar2img.to(torch.float32),
                                             reference_points.to(torch.float32)).squeeze(-1)
-        eps = 1e-5
+        eps = 1e-5 # （代码里用了一个极小值 eps 防止除以零）
 
+        # 透视除法与掩码初步生成 (Perspective Divide)
+        # 只有深度 z' > 0的点才是在摄像头前方的，因此记录在 bev_mask 中。如果在摄像头背后，这个点就毫无意义。
         bev_mask = (reference_points_cam[..., 2:3] > eps)
         reference_points_cam = reference_points_cam[..., 0:2] / torch.maximum(
             reference_points_cam[..., 2:3], torch.ones_like(reference_points_cam[..., 2:3]) * eps)
 
+        # 图像空间归一化与视野裁剪
         reference_points_cam[..., 0] /= img_metas[0]['img_shape'][0][1]
         reference_points_cam[..., 1] /= img_metas[0]['img_shape'][0][0]
 
+        # 使用 &（逻辑与）更新 bev_mask。一个点要想最终有效，它不仅要在摄像头前方，它在 2D 图像上的相对坐标还必须严格处于 (0, 1) 的区间内。
         bev_mask = (bev_mask & (reference_points_cam[..., 1:2] > 0.0)
                     & (reference_points_cam[..., 1:2] < 1.0)
                     & (reference_points_cam[..., 0:1] < 1.0)
