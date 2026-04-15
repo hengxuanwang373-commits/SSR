@@ -1,5 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
 import argparse
+import projects.mmdet3d_plugin  # noqa: F401 - Load custom modules for registry
 import mmcv
 from mmcv import Config
 
@@ -36,9 +40,13 @@ def main():
         # data loading pipeline for showing
         eval_pipeline = cfg.get('eval_pipeline', {})
         if eval_pipeline:
-            dataset.show(results, args.show_dir, pipeline=eval_pipeline)
+            if isinstance(results, dict) and "bbox_results" in results:
+        results = results["bbox_results"]
+    dataset.show(results, args.show_dir, pipeline=eval_pipeline)
         else:
-            dataset.show(results, args.show_dir)  # use default pipeline
+            if isinstance(results, dict) and "bbox_results" in results:
+        results = results["bbox_results"]
+    dataset.show(results, args.show_dir)  # use default pipeline
     else:
         raise NotImplementedError(
             'Show is not implemented for dataset {}!'.format(

@@ -101,7 +101,7 @@ class AttentionVisualizer:
     def _register_hooks(self, model):
         """Register forward hooks to extract attention weights."""
         def hook_fn(module, input, output):
-            self.attention_weights = output[1]
+            self.attention_weights = output[1].detach().cpu()
             print(f"Captured attention weights shape: {self.attention_weights.shape}")
 
         if hasattr(model, 'pts_bbox_head') and hasattr(model.pts_bbox_head, 'tokenlearner'):
@@ -120,8 +120,8 @@ def main():
     random.seed(12345)  # Changed to get a clearly different frame
     np.random.seed(12345)
 
-    ckpt_path = '/data3_server8/wanghongxuan/SSR/ckpts/ssr.pth'
-    save_dir = '/data3_server8/wanghongxuan/SSR/attention_maps/pretrain_weight'
+    ckpt_path = '/data3_server8/wanghongxuan/SSR/work_dirs/SSR_e2e/raw6epoch/epoch_6.pth'
+    save_dir = '/data3_server8/wanghongxuan/SSR/attention_maps/raw6epoch_weight'
     config_path = '/data3_server8/wanghongxuan/SSR/projects/configs/SSR/SSR_e2e.py'
 
     os.makedirs(save_dir, exist_ok=True)
@@ -134,9 +134,11 @@ def main():
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
 
     print(f"Loading checkpoint from {ckpt_path}")
-    load_checkpoint(model, ckpt_path, map_location='cpu')
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    state_dict = ckpt['state_dict']
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
-    model = model.cpu()
+    model = model.cuda()
 
     visualizer = AttentionVisualizer(model, save_dir)
 
@@ -161,12 +163,12 @@ def main():
     print("Processing random frame...")
 
     for data in data_loader:
-        # Unwrap data from DataContainer format
-        img = data['img'][0].data[0]  # [B, N, C, H, W]
-        img_metas = data['img_metas'][0].data[0]  # list of dicts (unwrap nested list)
-        ego_his_trajs = data['ego_his_trajs'][0].data[0]
-        ego_lcf_feat = data['ego_lcf_feat'][0].data[0]
-        cmd = data['ego_fut_cmd'][0].data[0]
+        # Unwrap data from DataContainer format and move to GPU
+        img = data['img'][0].data[0].cuda()  # [B, N, C, H, W]
+        img_metas = data['img_metas'][0].data[0]  # list of dicts (no cuda needed)
+        ego_his_trajs = data['ego_his_trajs'][0].data[0].cuda()
+        ego_lcf_feat = data['ego_lcf_feat'][0].data[0].cuda()
+        cmd = data['ego_fut_cmd'][0].data[0].cuda()
 
         print(f"Image shape: {img.shape}")
         print(f"img_metas type: {type(img_metas)}, len: {len(img_metas)}")

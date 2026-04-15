@@ -42,7 +42,7 @@ _num_levels_ = 1
 bev_h_ = 100
 bev_w_ = 100
 queue_length = 3 # each sequence contains `queue_length` frames.
-total_epochs = 12
+total_epochs = 6
 
 model = dict(
     type='SSR',
@@ -369,7 +369,7 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
+        # dict(type='TensorboardLoggerHook')  # disabled due to distutils compatibility
     ])
 # fp16 = dict(loss_scale=512.)
 find_unused_parameters = True

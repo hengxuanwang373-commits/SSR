@@ -340,6 +340,9 @@ class SSRHead(DETRHead):
         self.navi_embedding = nn.Embedding(3, self.embed_dims)
         self.navi_se = SELayer(self.embed_dims)
 
+        # CBAM attention module for BEV features
+        # self.cbam = CBAM(channels=self.embed_dims, reduction=4, kernel_size=7)
+
         self.way_point = nn.Embedding(self.ego_fut_mode*self.fut_ts, self.embed_dims * 2)
         self.tokenlearner = TokenLearnerV11(self.num_scenes, self.embed_dims * 2)
 
@@ -409,6 +412,11 @@ class SSRHead(DETRHead):
                 img_metas=img_metas,
                 prev_bev=prev_bev,
             )
+        # Apply CBAM attention to BEV features
+        # bev_embed_4d = bev_embed.view(bs, self.bev_h, self.bev_w, self.embed_dims).permute(0, 3, 1, 2)
+        # bev_embed_4d = self.cbam(bev_embed_4d)
+        # bev_embed = bev_embed_4d.permute(0, 2, 3, 1).contiguous().view(bs, self.bev_h * self.bev_w, self.embed_dims)
+
         if only_bev:
             return bev_embed
 

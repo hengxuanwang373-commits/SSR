@@ -133,6 +133,7 @@ class SpatialCrossAttention(BaseModule):
 
         bs, num_query, _ = query.size()
 
+        # 过滤无效查询
         D = reference_points_cam.size(3)
         indexes = []
         for i, mask_per_img in enumerate(bev_mask):
@@ -141,6 +142,7 @@ class SpatialCrossAttention(BaseModule):
         max_len = max([len(each) for each in indexes])
 
         # each camera only interacts with its corresponding BEV queries. This step can  greatly save GPU memory.
+        # 特征重组与独立采样，实际就是一个稀疏注意力机制
         queries_rebatch = query.new_zeros(
             [bs, self.num_cams, max_len, self.embed_dims])
         reference_points_rebatch = reference_points_cam.new_zeros(
@@ -166,6 +168,7 @@ class SpatialCrossAttention(BaseModule):
             for i, index_query_per_img in enumerate(indexes):
                 slots[j, index_query_per_img] += queries[j, i, :len(index_query_per_img)]
 
+        # 视野重叠区的均值融合
         count = bev_mask.sum(-1) > 0
         count = count.permute(1, 2, 0).sum(-1)
         count = torch.clamp(count, min=1.0)
@@ -335,6 +338,7 @@ class MSDeformableAttention3D(BaseModule):
         if key_padding_mask is not None:
             value = value.masked_fill(key_padding_mask[..., None], 0.0)
         value = value.view(bs, num_value, self.num_heads, -1)
+        # 预测在 2D 图像上的偏移量和权重
         sampling_offsets = self.sampling_offsets(query).view(
             bs, num_query, self.num_heads, self.num_levels, self.num_points, 2)
         attention_weights = self.attention_weights(query).view(
@@ -354,20 +358,25 @@ class MSDeformableAttention3D(BaseModule):
             For each referent point, we sample `num_points` sampling points.
             For `num_Z_anchors` reference points,  it has overall `num_points * num_Z_anchors` sampling points.
             """
+            # 将偏移量加到参考点上
+            # offset_normalizer 用来把绝对像素坐标变成 0~1 的相对坐标
             offset_normalizer = torch.stack(
                 [spatial_shapes[..., 1], spatial_shapes[..., 0]], -1)
 
             bs, num_query, num_Z_anchors, xy = reference_points.shape
+            # reference_points 的形状里包含了 num_Z_anchors（不同的高度投影点）
             reference_points = reference_points[:, :, None, None, None, :, :]
             sampling_offsets = sampling_offsets / \
                 offset_normalizer[None, None, None, :, None, :]
             bs, num_query, num_heads, num_levels, num_all_points, xy = sampling_offsets.shape
+            # 这里将网络预测的采样点，平分给不同的 Z_anchor
             sampling_offsets = sampling_offsets.view(
                 bs, num_query, num_heads, num_levels, num_all_points // num_Z_anchors, num_Z_anchors, xy)
             sampling_locations = reference_points + sampling_offsets
             bs, num_query, num_heads, num_levels, num_points, num_Z_anchors, xy = sampling_locations.shape
             assert num_all_points == num_points * num_Z_anchors
 
+            # 物理位置 + 偏移量 = 最终去图片上采样的位置
             sampling_locations = sampling_locations.view(
                 bs, num_query, num_heads, num_levels, num_all_points, xy)
 
@@ -387,6 +396,7 @@ class MSDeformableAttention3D(BaseModule):
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
             else:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+            # CUDA 算子执行采样
             output = MultiScaleDeformableAttnFunction.apply(
                 value, spatial_shapes, level_start_index, sampling_locations,
                 attention_weights, self.im2col_step)

@@ -4,6 +4,80 @@ import torch.nn.functional as F
 import math
 "from https://github.com/Kashu7100/TokenLearner/blob/main/model.py"
 
+
+# class ChannelAttention(nn.Module):
+#     """CBAM Channel Attention Module.
+#     Uses both max-pool and avg-pool, followed by a shared MLP.
+#     """
+#     def __init__(self, channels, reduction=4):
+#         super().__init__()
+#         self.avg_pool = nn.AdaptiveAvgPool1d(1)
+#         self.max_pool = nn.AdaptiveMaxPool1d(1)
+#         self.mlp = nn.Sequential(
+#             nn.Linear(channels, channels // reduction),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(channels // reduction, channels)
+#         )
+#         self.sigmoid = nn.Sigmoid()
+#
+#     def forward(self, x):
+#         # x: [B, C, H, W] -> reshape to [B, C, H*W]
+#         if x.dim() == 4:
+#             b, c, h, w = x.shape
+#             x_flat = x.view(b, c, h * w)
+#         else:
+#             x_flat = x
+#         avg_out = self.mlp(self.avg_pool(x_flat).squeeze(-1))
+#         max_out = self.mlp(self.max_pool(x_flat).squeeze(-1))
+#         out = self.sigmoid(avg_out + max_out).unsqueeze(-1)
+#         if x.dim() == 4:
+#             return x * out.view(b, c, 1, 1)
+#         return x * out
+#
+#
+# class SpatialAttention(nn.Module):
+#     """CBAM Spatial Attention Module.
+#     Uses pooling along channel dimension, then a convolution.
+#     """
+#     def __init__(self, kernel_size=7):
+#         super().__init__()
+#         self.conv = nn.Conv2d(2, 1, kernel_size, padding=kernel_size//2)
+#         self.sigmoid = nn.Sigmoid()
+#
+#     def forward(self, x):
+#         # x: [B, C, H, W]
+#         avg_out = torch.mean(x, dim=1, keepdim=True)
+#         max_out, _ = torch.max(x, dim=1, keepdim=True)
+#         out = torch.cat([avg_out, max_out], dim=1)
+#         out = self.sigmoid(self.conv(out))
+#         return x * out
+#
+#
+# class CBAM(nn.Module):
+#     """CBAM: Convolutional Block Attention Module.
+#     Combines channel attention and spatial attention sequentially.
+#
+#     Args:
+#         channels (int): Number of input channels (C).
+#         reduction (int): Channel attention reduction ratio. Default: 4.
+#         kernel_size (int): Spatial attention kernel size. Default: 7.
+#     """
+#     def __init__(self, channels, reduction=4, kernel_size=7):
+#         super().__init__()
+#         self.channel_attention = ChannelAttention(channels, reduction)
+#         self.spatial_attention = SpatialAttention(kernel_size)
+#
+#     def forward(self, x):
+#         """
+#         Args:
+#             x: Input tensor with shape [B, C, H, W]
+#         Returns:
+#             Tensor with shape [B, C, H, W]
+#         """
+#         x = self.channel_attention(x)
+#         x = self.spatial_attention(x)
+#         return x
+
 class MlpBlock(nn.Module):
     """Simple MLP block with GELU activation and dropout."""
     def __init__(self, input_dim, mlp_dim, output_dim, dropout_rate=0.1):

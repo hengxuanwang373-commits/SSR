@@ -174,6 +174,7 @@ class TemporalSelfAttention(BaseModule):
              Tensor: forwarded results with shape [num_query, bs, embed_dims].
         """
 
+        # 第一帧时，没有历史特征，直接复制第一帧
         if value is None:
             assert self.batch_first
             bs, len_bev, c = query.shape
@@ -190,10 +191,14 @@ class TemporalSelfAttention(BaseModule):
             query = query.permute(1, 0, 2)
             value = value.permute(1, 0, 2)
         bs,  num_query, embed_dims = query.shape
-        _, num_value, _ = value.shape
+        _, num_value, _ = value.shape # 只修改 num_value 的值
         assert (spatial_shapes[:, 0] * spatial_shapes[:, 1]).sum() == num_value
         assert self.num_bev_queue == 2
 
+        # 时空特征拼接
+        # torch.cat 是一个拼接函数
+        # [:bs] 指从第 0 个取到第 bs 个，左开右闭。这里提取的是历史帧 BEV，然后和当前的 query 进行拼接
+        # -1 指在特征维度进行拼接，最后一维统一规定为特征维度
         query = torch.cat([value[:bs], query], -1)
         value = self.value_proj(value)
 
@@ -203,6 +208,7 @@ class TemporalSelfAttention(BaseModule):
         value = value.reshape(bs*self.num_bev_queue,
                               num_value, self.num_heads, -1)
 
+        # 通过线性层生成采样偏移和注意力权重
         sampling_offsets = self.sampling_offsets(query)
         sampling_offsets = sampling_offsets.view(
             bs, num_query, self.num_heads,  self.num_bev_queue, self.num_levels, self.num_points, 2)
@@ -244,6 +250,7 @@ class TemporalSelfAttention(BaseModule):
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
             else:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+            # 多尺度可变形采样，抓取由 offsets 指示的最有价值的局部特征
             output = MultiScaleDeformableAttnFunction.apply(
                 value, spatial_shapes, level_start_index, sampling_locations,
                 attention_weights, self.im2col_step)
@@ -252,6 +259,7 @@ class TemporalSelfAttention(BaseModule):
             output = multi_scale_deformable_attn_pytorch(
                 value, spatial_shapes, sampling_locations, attention_weights)
 
+        # 维度重排
         # output shape (bs*num_bev_queue, num_query, embed_dims)
         # (bs*num_bev_queue, num_query, embed_dims)-> (num_query, embed_dims, bs*num_bev_queue)
         output = output.permute(1, 2, 0)
@@ -259,7 +267,7 @@ class TemporalSelfAttention(BaseModule):
         # fuse history value and current value
         # (num_query, embed_dims, bs*num_bev_queue)-> (num_query, embed_dims, bs, num_bev_queue)
         output = output.view(num_query, embed_dims, bs, self.num_bev_queue)
-        output = output.mean(-1)
+        output = output.mean(-1) # 均值池化操作
 
         # (num_query, embed_dims, bs)-> (bs, num_query, embed_dims)
         output = output.permute(2, 0, 1)

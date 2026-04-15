@@ -374,6 +374,11 @@ class PlanningMetric():
         # trajs = trajs * torch.tensor([-1, 1], device=trajs.device)
         # gt_trajs = gt_trajs * torch.tensor([-1, 1], device=gt_trajs.device)
 
+        # Ensure all tensors are on the same device (gt_trajs is on GPU, trajs is on CPU)
+        target_device = gt_trajs.device
+        trajs = trajs.to(target_device)
+        segmentation = segmentation.to(device=target_device)
+
         obj_coll_sum = torch.zeros(n_future, device=segmentation.device)
         obj_box_coll_sum = torch.zeros(n_future, device=segmentation.device)
 
@@ -391,11 +396,11 @@ class PlanningMetric():
             ).to(gt_box_coll.device)
             m1 = torch.logical_and(m1, torch.logical_not(gt_box_coll))
 
-            ti = torch.arange(n_future)
+            ti = torch.arange(n_future, device=segmentation.device)
             obj_coll_sum[ti[m1]] += segmentation[i, ti[m1], xi[m1], yi[m1]].long()
 
             m2 = torch.logical_not(gt_box_coll)
-            box_coll = self.evaluate_single_coll(trajs[i], segmentation[i], input_gt=False).to(ti.device)
+            box_coll = self.evaluate_single_coll(trajs[i], segmentation[i], input_gt=False).to(segmentation.device)
             obj_box_coll_sum[ti[m2]] += (box_coll[ti[m2]]).long()
 
         return obj_coll_sum, obj_box_coll_sum
