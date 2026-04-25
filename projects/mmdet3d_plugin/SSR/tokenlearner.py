@@ -78,6 +78,62 @@ import math
 #         x = self.spatial_attention(x)
 #         return x
 
+
+class ConditionalCBAM(nn.Module):
+    """条件CBAM: 通道注意力由导航条件生成，空间注意力自生成"""
+    def __init__(self, channels, reduction=4, kernel_size=7):
+        super().__init__()
+        # 条件通道注意力: navi_embed → 通道权重
+        self.channel_mlp = nn.Sequential(
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid()
+        )
+        # 空间注意力: 自注意力机制
+        self.spatial_conv = nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2)
+
+    def forward(self, x, navi_embed):
+        residual = x
+        is_3d = (x.dim() == 3)
+
+        # 安全地统一 reshape 为 [B, C, H, W]
+        if is_3d:  # [B, H*W, C]
+            B, HW, C = x.shape
+            H = W = int(math.sqrt(HW))
+            # 必须先 permute 再 view，否则特征会错乱！
+            x_4d = x.permute(0, 2, 1).view(B, C, H, W).contiguous()
+        else:
+            x_4d = x
+            B, C, H, W = x_4d.shape
+
+        # === 阶段一: 条件通道调制 ===
+        if navi_embed.dim() == 2:
+            navi_embed = navi_embed.unsqueeze(1)  # [B, C] → [B, 1, C]
+
+        channel_attn = self.channel_mlp(navi_embed)  # [B, 1, C]
+        # 必须转为 [B, C, 1, 1] 才能与 [B, C, H, W] 进行正确的空间广播乘法
+        channel_attn = channel_attn.view(B, C, 1, 1)
+        x_4d = x_4d * channel_attn
+
+        # === 阶段二: 空间显著性重塑 ===
+        avg_out = torch.mean(x_4d, dim=1, keepdim=True)  # [B, 1, H, W]
+        max_out, _ = torch.max(x_4d, dim=1, keepdim=True)  # [B, 1, H, W]
+        spatial_input = torch.cat([avg_out, max_out], dim=1)  # [B, 2, H, W]
+        spatial_heatmap = torch.sigmoid(self.spatial_conv(spatial_input))  # [B, 1, H, W]
+        x_4d = x_4d * spatial_heatmap
+
+        # === 阶段三: 残差连接 ===
+        # 安全地恢复原始形状
+        if is_3d:
+            x_out = x_4d.view(B, C, -1).permute(0, 2, 1).contiguous()
+        else:
+            x_out = x_4d
+
+        out = x_out + residual
+        return out
+
+
 class MlpBlock(nn.Module):
     """Simple MLP block with GELU activation and dropout."""
     def __init__(self, input_dim, mlp_dim, output_dim, dropout_rate=0.1):

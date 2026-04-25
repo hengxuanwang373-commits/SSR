@@ -339,9 +339,7 @@ class SSRHead(DETRHead):
         self.ego_fut_decoder = nn.Sequential(*ego_fut_decoder)
         self.navi_embedding = nn.Embedding(3, self.embed_dims)
         self.navi_se = SELayer(self.embed_dims)
-
-        # CBAM attention module for BEV features
-        # self.cbam = CBAM(channels=self.embed_dims, reduction=4, kernel_size=7)
+        # self.conditional_cbam = ConditionalCBAM(channels=self.embed_dims, reduction=4, kernel_size=7)
 
         self.way_point = nn.Embedding(self.ego_fut_mode*self.fut_ts, self.embed_dims * 2)
         self.tokenlearner = TokenLearnerV11(self.num_scenes, self.embed_dims * 2)
@@ -426,6 +424,7 @@ class SSRHead(DETRHead):
 
         navi_embed = self.navi_embedding.weight[cmd_idx][None, None]
         bev_navi_embed = self.navi_se(bev_embed, navi_embed)
+        # bev_navi_embed = self.conditional_cbam(bev_embed, navi_embed)
 
         bev_query = torch.cat((bev_navi_embed, pos_embd), -1)
 

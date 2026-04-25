@@ -192,6 +192,39 @@ def _get_can_bus_info(nusc, nusc_can_bus, sample):
     return np.array(can_bus)
 
 
+def _build_sample_to_data_lookup(nusc):
+    """Build a reverse lookup from sample_token -> {channel: sample_data_token}.
+
+    For datasets where sample.json lacks the 'data' field, this builds the mapping
+    from sample_data.json entries.
+    """
+    lookup = {}
+    for sd in nusc.sample_data:
+        st = sd['sample_token']
+        fname = sd['filename']
+        if fname.startswith('samples/'):
+            channel = fname.split('/')[1]
+        elif fname.startswith('sweeps/'):
+            continue  # skip sweeps for the 'data' field lookup
+        else:
+            continue
+        if st not in lookup:
+            lookup[st] = {}
+        # Only store keyframe entries (is_key_frame=True)
+        if sd.get('is_key_frame', False) and channel not in lookup[st]:
+            lookup[st][channel] = sd['token']
+    return lookup
+
+
+def _get_sample_data_token(sample, channel, sample_to_data_lookup, nusc):
+    """Get sample_data token for a given channel, with fallback to lookup."""
+    if 'data' in sample and channel in sample.get('data', {}):
+        return sample['data'][channel]
+    if sample['token'] in sample_to_data_lookup and channel in sample_to_data_lookup[sample['token']]:
+        return sample_to_data_lookup[sample['token']][channel]
+    raise KeyError(f"No sample_data token for channel {channel} in sample {sample['token']}")
+
+
 def _fill_trainval_infos(nusc,
                          nusc_can_bus,
                          train_scenes,
@@ -221,22 +254,25 @@ def _fill_trainval_infos(nusc,
     for idx, dic in enumerate(nusc.category):
         cat2idx[dic['name']] = idx
 
+    # Build reverse lookup for datasets missing 'data' field in sample.json
+    sample_to_data_lookup = _build_sample_to_data_lookup(nusc)
+
     for sample in mmcv.track_iter_progress(nusc.sample):
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
-        lidar_token = sample['data']['LIDAR_TOP']
-        sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        lidar_token = _get_sample_data_token(sample, 'LIDAR_TOP', sample_to_data_lookup, nusc)
+        sd_rec = nusc.get('sample_data', _get_sample_data_token(sample, 'LIDAR_TOP', sample_to_data_lookup, nusc))
         cs_record = nusc.get('calibrated_sensor',
                              sd_rec['calibrated_sensor_token'])
         pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
         if sample['prev'] != '':
             sample_prev = nusc.get('sample', sample['prev'])
-            sd_rec_prev = nusc.get('sample_data', sample_prev['data']['LIDAR_TOP'])
+            sd_rec_prev = nusc.get('sample_data', _get_sample_data_token(sample_prev, 'LIDAR_TOP', sample_to_data_lookup, nusc))
             pose_record_prev = nusc.get('ego_pose', sd_rec_prev['ego_pose_token'])
         else:
             pose_record_prev = None
         if sample['next'] != '':
             sample_next = nusc.get('sample', sample['next'])
-            sd_rec_next = nusc.get('sample_data', sample_next['data']['LIDAR_TOP'])
+            sd_rec_next = nusc.get('sample_data', _get_sample_data_token(sample_next, 'LIDAR_TOP', sample_to_data_lookup, nusc))
             pose_record_next = nusc.get('ego_pose', sd_rec_next['ego_pose_token'])
         else:
             pose_record_next = None
@@ -294,7 +330,7 @@ def _fill_trainval_infos(nusc,
             'CAM_BACK_RIGHT',
         ]
         for cam in camera_types:
-            cam_token = sample['data'][cam]
+            cam_token = _get_sample_data_token(sample, cam, sample_to_data_lookup, nusc)
             cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
@@ -302,7 +338,7 @@ def _fill_trainval_infos(nusc,
             info['cams'].update({cam: cam_info})
 
         # obtain sweeps for a single key-frame
-        sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        sd_rec = nusc.get('sample_data', _get_sample_data_token(sample, 'LIDAR_TOP', sample_to_data_lookup, nusc))
         sweeps = []
         while len(sweeps) < max_sweeps:
             if not sd_rec['prev'] == '':

@@ -5,6 +5,7 @@ Randomly selects a frame from the test set
 """
 import os
 import os.path as osp
+import argparse
 import random
 import torch
 import numpy as np
@@ -116,13 +117,21 @@ class AttentionVisualizer:
 
 
 def main():
-    # Random seed for reproducibility - change to get different frames
-    random.seed(12345)  # Changed to get a clearly different frame
-    np.random.seed(12345)
+    parser = argparse.ArgumentParser(description='Visualize SSR TokenLearner attention heatmaps.')
+    parser.add_argument('--checkpoint', default='/data3_server8/wanghongxuan/SSR/work_dirs/SSR_mini_cbam_6epoch/epoch_6.pth')
+    parser.add_argument('--config', default='/data3_server8/wanghongxuan/SSR/projects/configs/SSR/SSR_e2e_mini.py')
+    parser.add_argument('--save-dir', default='/data3_server8/wanghongxuan/SSR/attention_maps/epoch_6_mini_cbam')
+    parser.add_argument('--frame-idx', type=int, default=None, help='Dataset index to visualize. Random if omitted.')
+    parser.add_argument('--seed', type=int, default=12345)
+    args = parser.parse_args()
 
-    ckpt_path = '/data3_server8/wanghongxuan/SSR/work_dirs/SSR_e2e/raw6epoch/epoch_6.pth'
-    save_dir = '/data3_server8/wanghongxuan/SSR/attention_maps/raw6epoch_weight'
-    config_path = '/data3_server8/wanghongxuan/SSR/projects/configs/SSR/SSR_e2e.py'
+    # Random seed for reproducibility - change to get different frames
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    ckpt_path = args.checkpoint
+    save_dir = args.save_dir
+    config_path = args.config
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -150,7 +159,9 @@ def main():
     print(f"Dataset size: {len(dataset)}")
 
     # Select random index
-    random_idx = random.randint(0, len(dataset) - 1)
+    random_idx = args.frame_idx if args.frame_idx is not None else random.randint(0, len(dataset) - 1)
+    if random_idx < 0 or random_idx >= len(dataset):
+        raise ValueError(f'frame_idx {random_idx} out of range [0, {len(dataset) - 1}]')
     print(f"Random selected frame index: {random_idx}")
 
     # Create subset with just the random index
