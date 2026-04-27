@@ -41,6 +41,17 @@ python projects/mmdet3d_plugin/visualize_attention.py
 python tools/analysis_tools/compute_planning_metrics.py
 ```
 
+### Planning Eval Curves (Compare Multiple Runs)
+```bash
+python3 tools/analysis_tools/plot_planning_eval_curves.py result_a.pkl result_b.pkl --labels expA expB --out-dir paper_eval
+```
+
+> **Results file naming convention**: `results.pkl` files do **not** store checkpoint paths — the associated epoch/weight must be inferred from the filename or output timestamp. For example:
+> - `results_raw6epoch.pkl` → corresponds to the raw 6-epoch experiment
+> - `results.pkl` → corresponds to the 2026-04-02 20:24 output
+>
+> Always check the work directory or output log to confirm which checkpoint was used when there is ambiguity.
+
 ## Architecture
 
 ### OpenMMLab Plugin Structure
@@ -91,6 +102,7 @@ Config values include:
 | `projects/mmdet3d_plugin/SSR/apis/train.py` | Custom training wrapper (`custom_train_model`) with custom EvalHook |
 | `projects/mmdet3d_plugin/SSR/apis/test.py` | Custom multi-GPU test function |
 | `projects/mmdet3d_plugin/visualize_attention.py` | Attention map visualization |
+| `tools/analysis_tools/plot_planning_eval_curves.py` | Compare planning metrics across multiple runs |
 
 ### Data Flow
 
