@@ -31,6 +31,25 @@ python tools/data_converter/vad_nuscenes_converter.py nuscenes \
   --extra-tag vad_nuscenes --version v1.0 --canbus ./data
 ```
 
+### Balanced Subset Creation
+```bash
+python tools/make_balanced_subset.py \
+  --src data/nuscenes/vad_nuscenes_infos_temporal_train.pkl \
+  --out data/nuscenes/vad_nuscenes_infos_temporal_train_balanced_10p.pkl \
+  --ratio 0.1 \
+  --max-per-scene 80 \
+  --seed 42 \
+  --min-valid-fut 6
+```
+Use `--overwrite` to replace an existing output file.
+
+Key behavior:
+- Reads from `--src`, writes to `--out` (never modifies the source)
+- Balances across 3 command classes (0/1/2), polling round-robin within each class
+- Per-scene cap via `--max-per-scene`; filters out samples with fewer than `--min-valid-fut` valid future points
+- Preserves top-level `dict` structure (metadata + other keys); only replaces `infos`
+- Reports pre/post sample counts, command distribution, scene count, and per-scene max/avg
+
 ### Visualization
 ```bash
 python projects/mmdet3d_plugin/visualize_attention.py

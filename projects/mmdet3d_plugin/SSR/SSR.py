@@ -57,7 +57,8 @@ class SSR(MVXTwoStageDetector):
                  video_test_mode=False,
                  fut_ts=6,
                  fut_mode=6,
-                 loss_bev=None
+                 loss_bev=None,
+                 freeze_cfg=None
                  ):
 
         super(SSR,
@@ -94,6 +95,69 @@ class SSR(MVXTwoStageDetector):
                 if p.dim() > 1:
                     torch.nn.init.xavier_uniform_(p)
             self.loss_bev = build_loss(loss_bev)
+
+        self.freeze_cfg = freeze_cfg
+        self.freeze_enabled = self._get_freeze_cfg_value('enable', False)
+        self.freeze_bn = self._get_freeze_cfg_value('freeze_bn', False)
+        if self.freeze_enabled:
+            self._apply_freeze_cfg()
+
+    def _get_freeze_cfg_value(self, key, default=None):
+        if self.freeze_cfg is None:
+            return default
+        if hasattr(self.freeze_cfg, 'get'):
+            return self.freeze_cfg.get(key, default)
+        return getattr(self.freeze_cfg, key, default)
+
+    def _apply_freeze_cfg(self):
+        trainable_keywords = self._get_freeze_cfg_value('trainable_keywords', [])
+        verbose = self._get_freeze_cfg_value('verbose', False)
+
+        for _, param in self.named_parameters():
+            param.requires_grad = False
+
+        for name, param in self.named_parameters():
+            if any(keyword in name for keyword in trainable_keywords):
+                param.requires_grad = True
+
+        if self.freeze_bn:
+            self._freeze_batch_norm()
+
+        if verbose:
+            self._print_trainable_parameters()
+
+    def _freeze_batch_norm(self):
+        for module in self.modules():
+            if isinstance(module, nn.modules.batchnorm._BatchNorm):
+                module.eval()
+                for param in module.parameters(recurse=False):
+                    param.requires_grad = False
+
+    def _print_trainable_parameters(self):
+        total_params = 0
+        trainable_params = 0
+        lines = ['[SSR freeze_cfg] Trainable parameters:']
+
+        for name, param in self.named_parameters():
+            numel = param.numel()
+            total_params += numel
+            if param.requires_grad:
+                trainable_params += numel
+                lines.append(
+                    '[SSR freeze_cfg] '
+                    f'{name}, shape={tuple(param.shape)}, numel={numel}')
+
+        trainable_ratio = trainable_params / total_params if total_params > 0 else 0
+        lines.append(f'[SSR freeze_cfg] total params: {total_params}')
+        lines.append(f'[SSR freeze_cfg] trainable params: {trainable_params}')
+        lines.append(f'[SSR freeze_cfg] trainable ratio: {trainable_ratio:.6f}')
+        print('\n'.join(lines))
+
+    def train(self, mode=True):
+        super(SSR, self).train(mode)
+        if mode and self.freeze_enabled and self.freeze_bn:
+            self._freeze_batch_norm()
+        return self
 
     def extract_img_feat(self, img, img_metas, len_queue=None):
         """Extract features of images."""
