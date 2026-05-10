@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["CLAUDE.md"],
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "python tools/train.py *": "allow",
+      "python tools/test.py *": "allow",
+      "python tools/analysis_tools/*": "allow",
+      "python projects/mmdet3d_plugin/visualize_attention.py": "allow",
+      "nvidia-smi*": "allow",
+      "ls *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "ps *": "allow",
+      "conda *": "ask",
+      "pip install*": "ask",
+      "python -c *": "allow"
+    }
+  }
+}

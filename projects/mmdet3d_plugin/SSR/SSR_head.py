@@ -160,6 +160,9 @@ class SSRHead(DETRHead):
                  loss_plan_reg=dict(type='L1Loss', loss_weight=0.25),
                  ego_lcf_feat_idx=None,
                  valid_fut_ts=6,
+                 attention_type='se',
+                 cbam_reduction=4,
+                 cbam_kernel_size=7,
                  **kwargs):
 
         self.bev_h = bev_h
@@ -175,6 +178,9 @@ class SSRHead(DETRHead):
         self.ego_lcf_feat_idx = ego_lcf_feat_idx
         self.valid_fut_ts = valid_fut_ts
         self.num_scenes = num_scenes
+        self.attention_type = attention_type
+        self.cbam_reduction = cbam_reduction
+        self.cbam_kernel_size = cbam_kernel_size
 
         if loss_traj_cls['use_sigmoid'] == True:
             self.traj_num_cls = 1
@@ -338,8 +344,25 @@ class SSRHead(DETRHead):
         ego_fut_decoder.append(Linear(ego_fut_dec_in_dim, 2))
         self.ego_fut_decoder = nn.Sequential(*ego_fut_decoder)
         self.navi_embedding = nn.Embedding(3, self.embed_dims)
-        self.navi_se = SELayer(self.embed_dims)
-        # self.conditional_cbam = ConditionalCBAM(channels=self.embed_dims, reduction=4, kernel_size=7)
+        if self.attention_type == 'se':
+            self.navi_se = SELayer(self.embed_dims)
+        elif self.attention_type == 'cbam':
+            self.conditional_cbam = ConditionalCBAM(
+                channels=self.embed_dims,
+                reduction=self.cbam_reduction,
+                kernel_size=self.cbam_kernel_size)
+        elif self.attention_type == 'se_cbam':
+            self.navi_se = SELayer(self.embed_dims)
+            self.conditional_cbam = ConditionalCBAM(
+                channels=self.embed_dims,
+                reduction=self.cbam_reduction,
+                kernel_size=self.cbam_kernel_size)
+        elif self.attention_type == 'none':
+            pass
+        else:
+            raise ValueError(
+                f"Unsupported attention_type: {self.attention_type}. "
+                "Expected one of 'se', 'cbam', 'se_cbam', or 'none'.")
 
         self.way_point = nn.Embedding(self.ego_fut_mode*self.fut_ts, self.embed_dims * 2)
         self.tokenlearner = TokenLearnerV11(self.num_scenes, self.embed_dims * 2)
@@ -423,8 +446,20 @@ class SSRHead(DETRHead):
         cmd_idx = torch.nonzero(cmd)[0, 0]
 
         navi_embed = self.navi_embedding.weight[cmd_idx][None, None]
-        bev_navi_embed = self.navi_se(bev_embed, navi_embed)
-        # bev_navi_embed = self.conditional_cbam(bev_embed, navi_embed)
+        navi_embed = navi_embed.expand(bs, -1, -1)
+        if self.attention_type == 'se':
+            bev_navi_embed = self.navi_se(bev_embed, navi_embed)
+        elif self.attention_type == 'cbam':
+            bev_navi_embed = self.conditional_cbam(bev_embed, navi_embed)
+        elif self.attention_type == 'se_cbam':
+            bev_navi_embed = self.navi_se(bev_embed, navi_embed)
+            bev_navi_embed = self.conditional_cbam(bev_navi_embed, navi_embed)
+        elif self.attention_type == 'none':
+            bev_navi_embed = bev_embed
+        else:
+            raise ValueError(
+                f"Unsupported attention_type: {self.attention_type}. "
+                "Expected one of 'se', 'cbam', 'se_cbam', or 'none'.")
 
         bev_query = torch.cat((bev_navi_embed, pos_embd), -1)
 

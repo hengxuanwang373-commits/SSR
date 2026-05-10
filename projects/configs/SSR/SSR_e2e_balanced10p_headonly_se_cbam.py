@@ -54,7 +54,9 @@ model = dict(
             'pts_bbox_head.tokenlearner',
             'pts_bbox_head.latent_decoder',
             'pts_bbox_head.way_decoder',
-            'pts_bbox_head.plan'
+            'pts_bbox_head.plan',
+            'pts_bbox_head.navi_se',
+            'pts_bbox_head.conditional_cbam'
         ],
         freeze_bn=True,
         verbose=True),
@@ -88,6 +90,9 @@ model = dict(
         ego_his_encoder=None,
         ego_lcf_feat_idx=None,
         valid_fut_ts=6,
+        attention_type='se_cbam',
+        cbam_reduction=4,
+        cbam_kernel_size=7,
         latent_decoder=dict(
             type='CustomTransformerDecoder',
             num_layers=3,

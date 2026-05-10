@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) and **OpenCode** when working with code in this repository.
+
+> **Note for OpenCode users**: OpenCode loads this file automatically as the project's initialization document.
+> For additional OpenCode-specific configuration, see `opencode.json` in the project root.
+> Use `/help` for available commands, `/undo` to revert changes, `/share` to create session links.
 
 ## Project Overview
 
@@ -138,6 +142,70 @@ Train pipeline (`train_pipeline` in config):
 - **PyTorch**: 1.9.1 + CUDA 11.1
 - **Key packages**: mmcv-full 1.4.0, mmdet 2.14.0, mmsegmentation 0.14.1, mmdet3d 0.17.1 (installed from source), nuscenes-devkit 1.1.9
 - **No formal test suite** — validation is done via `tools/test.py` and planning metric computation
+
+## Code Conventions
+
+### File/Class Mapping
+
+| File | Key Class(es) | Registration |
+|---|---|---|
+| `SSR.py` | `SSR` | `@DETECTORS.register_module()` |
+| `SSR_head.py` | `SSRHead`, `MLN` | `@HEADS.register_module()` |
+| `SSR_transformer.py` | `SSRPerceptionTransformer`, `BEVFormerLayer`, `MapDetectionTransformerDecoder` | `@TRANSFORMER_LAYER_SEQUENCE.register_module()` |
+| `tokenlearner.py` | `TokenFuser` | `nn.Module` (no mmreg) |
+| `planner/metric_stp3.py` | `PlanningMetric` | direct import |
+| `projects/mmdet3d_plugin/datasets/` | `VADCustomNuScenesDataset` | `@DATASETS.register_module()` |
+
+### Import Order
+```python
+# 1. Standard library
+import copy
+import os
+
+# 2. Third-party
+import torch
+import numpy as np
+
+# 3. OpenMMLab framework
+from mmdet.models import DETECTORS, HEADS
+from mmcv.runner import force_fp32
+
+# 4. Local project modules
+from projects.mmdet3d_plugin.SSR.tokenlearner import TokenFuser
+```
+
+### Config Conventions
+- Configs are **Python files** (not YAML), parsed by `mmcv.Config`
+- `plugin = True` and `plugin_dir = 'projects/mmdet3d_plugin/'` enables the plugin
+- Key dimensions are defined as module-level variables: `_dim_`, `_pos_dim_`, `_ffn_dim_`, `bev_h_`, `bev_w_`
+- Loss weights are specified in `pts_bbox_head` config under `loss_*` keys
+
+### Naming
+- `camelCase` for config keys and mmcv registry
+- `snake_case` for Python functions and variables
+- `PascalCase` for class names
+
+## Verification Workflow
+
+Since there is no formal test suite, after making code changes verify by:
+
+1. **Check imports** — run a minimal import test:
+   ```bash
+   python -c "from projects.mmdet3d_plugin.SSR.SSR import SSR; print('import OK')"
+   ```
+2. **Check config loading**:
+   ```bash
+   python tools/train.py projects/configs/SSR/SSR_e2e.py --help
+   ```
+3. **Run inference on a single sample** (requires data and GPU):
+   ```bash
+   CUDA_VISIBLE_DEVICES=0 python tools/test.py projects/configs/SSR/SSR_e2e.py /path/to/ckpt.pth --launcher none --eval bbox --tmpdir tmp
+   ```
+
+If you modify planning-related code, always run planning metrics afterwards:
+```bash
+python tools/analysis_tools/compute_planning_metrics.py
+```
 
 ## Dependency Acknowledgements
 

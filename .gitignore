@@ -7,6 +7,8 @@ data/
 ckpts/
 work_dirs/
 attention_maps/
+Evaluation/
+test/SSR_e2e*/
 tmp/
 outputs/
 
@@ -14,6 +16,23 @@ outputs/
 *.pt
 *.ckpt
 *.onnx
+*.pkl
+*.pickle
+*.npz
+*.npy
+*.bin
+*.safetensors
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.mp4
+*.avi
+*.mov
 *.log
 *.log.json
 
